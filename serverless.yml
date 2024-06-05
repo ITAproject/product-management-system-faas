@@ -10,6 +10,7 @@ provider:
   region: us-east-1
   environment:
     PRODUCTS_TABLE: ${self:service}-products
+    JWT_SECRET: secret
 
 plugins:
   - serverless-offline
@@ -21,6 +22,13 @@ custom:
       - local
 
 functions:
+  login:
+    handler: handler.login
+    events:
+      - http:
+          path: /login
+          method: post
+          cors: true
   createProduct:
     handler: handler.createProduct
     events:
@@ -61,6 +69,32 @@ functions:
           method: delete
           cors: true
 
+  scheduledTask:
+    handler: handler.scheduledTask
+    events:
+      - schedule:
+          rate: rate(5 minutes)
+
+    processProductChanges:
+      handler: handler.processProductChanges
+      events:
+        - stream:
+            type: dynamodb
+            arn:
+              Fn::GetAtt:
+                - ProductsDynamoDBTable
+                - StreamArn
+
+    handleSnsNotification:
+      handler: handler.handleSnsNotification
+      events:
+        - sns: productNotification
+
+    sendProductsSummary:
+      handler: handler.sendProductsSummary
+      events:
+        - schedule: rate(1 day)
+
 resources:
   Resources:
     ProductsDynamoDBTable:
@@ -76,3 +110,10 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+
+    EventNotificationTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: productNotification

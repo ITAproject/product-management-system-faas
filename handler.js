@@ -10,6 +10,39 @@ const docClient = new AWS.DynamoDB.DocumentClient({
 
 const TABLE_NAME = "product-management-system-products";
 
+const JWT_SECRET = "secret";
+
+// Middleware to validate JWT
+const authenticateJWT = (event) => {
+    const token = event.headers.Authorization || event.headers.authorization;
+    if (!token) {
+        throw new Error('No token provided');
+    }
+    try {
+        return jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+        throw new Error('Unauthorized');
+    }
+};
+
+// Login
+module.exports.login = async (event) => {
+    const {username, password} = JSON.parse(event.body);
+    if (username === 'admin' && password === 'admin') {
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                token: jwt.sign({username}, JWT_SECRET)
+            })
+        };
+    }
+
+    return {
+        statusCode: 401,
+        body: JSON.stringify({error: 'Unauthorized'})
+    };
+};
+
 module.exports.createProduct = async (event) => {
     const {name, description, price} = JSON.parse(event.body);
     const id = uuid.v4();
@@ -18,6 +51,10 @@ module.exports.createProduct = async (event) => {
         TableName: TABLE_NAME,
         Item: newProduct
     }).promise();
+
+    // Auto-invoking function
+    await module.exports.sendProductsSummary(event);
+
     return {
         statusCode: 201,
         body: JSON.stringify(newProduct)
@@ -82,5 +119,40 @@ module.exports.deleteProduct = async (event) => {
     return {
         statusCode: 200,
         body: JSON.stringify({message: 'Product deleted successfully'})
+    };
+};
+
+// Scheduled Task
+module.exports.scheduledTask = async () => {
+    console.log('Scheduled task running...');
+};
+
+// Process Product Changes
+module.exports.processProductChanges = async (event) => {
+    for (const record of event.Records) {
+        console.log('DynamoDB Record: %j', record.dynamodb);
+    }
+};
+
+// Send Products Summary
+module.exports.sendProductsSummary = async () => {
+    const data = await docClient.scan({ TableName: TABLE_NAME }).promise();
+    const products = data.Items;
+
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ products: products })
+    };
+};
+
+// Handle SNS Notification
+module.exports.handleSnsNotification = async (event) => {
+    for (const record of event.Records) {
+        const snsMessage = record.Sns.Message;
+        console.log('SNS Message:', snsMessage);
+    }
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'SNS notification processed successfully' })
     };
 };
